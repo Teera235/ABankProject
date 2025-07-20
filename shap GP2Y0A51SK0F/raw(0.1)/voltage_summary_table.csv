@@ -1,0 +1,12 @@
+File,Distance (cm),Mean Voltage (V),Std Dev (V),Min (V),Max (V)
+calibration_5.0cm.csv,5.0,1.080471,0.008386,1.064,1.113
+calibration_5.1cm.csv,5.1,1.066421,0.006234,1.055,1.099
+calibration_5.2cm.csv,5.2,1.04742,0.006453,1.045,1.079
+calibration_5.3cm.csv,5.3,1.027736,0.005811,1.025,1.055
+calibration_5.4cm.csv,5.4,1.007969,0.006429,1.006,1.04
+calibration_5.5cm.csv,5.5,0.995377,0.009413,0.986,1.03
+calibration_5.6cm.csv,5.6,0.987926,0.005538,0.986,1.011
+calibration_5.7cm.csv,5.7,0.968689,0.005764,0.962,0.996
+calibration_5.8cm.csv,5.8,0.955206,0.006792,0.947,0.981
+calibration_5.9cm.csv,5.9,0.947821,0.006176,0.933,0.972
+calibration_6.0cm.csv,6.0,0.934865,0.004732,0.933,0.957
