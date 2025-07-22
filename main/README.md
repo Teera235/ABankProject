@@ -1,96 +1,162 @@
-#  ESP32 LoRa Satellite Tracking System
+# LoRa IMU System - Wiring & Latency Analysis
 
-ระบบติดตามดาวเทียมจำลองด้วย **ESP32**, **LoRa**, **GPS**, **NGIMU**, และ **SD Card**  
-ส่งข้อมูลจาก CubeSat (Sender) ไปยัง Ground Station (Receiver) เพื่อบันทึกและประมวลผล
+## 1. การต่อวงจร (Wiring Connections)
 
----
+### Arduino/ESP32 กับ LoRa Module (SX1276/SX1278):
+```
+LoRa Module  →  Arduino Pin
+VCC          →  3.3V
+GND          →  GND
+SCK          →  18 (SPI Clock)
+MISO         →  19 (SPI MISO)
+MOSI         →  23 (SPI MOSI)
+NSS/CS       →  5  (LORA_SS)
+RST          →  14 (LORA_RST)
+DIO0         →  2  (LORA_DIO0)
+```
 
-##  Bill of Materials (BOM)
+### Arduino/ESP32 กับ N-IMU:
+```
+N-IMU        →  Arduino Pin
+VCC          →  5V หรือ 3.3V
+GND          →  GND
+TX           →  16 (Serial1 RX)
+RX           →  17 (Serial1 TX)
+```
 
-| จำนวน | อุปกรณ์ | รุ่น/สเปกแนะนำ | หน้าที่ |
-|-------|---------|----------------|---------|
-| 2 | ESP32 Dev Board | ESP32-WROOM-32 | หน่วยประมวลผลหลัก |
-| 2 | LoRa Module | Ra-01 (433MHz) หรือ Ra-02 (868/915MHz) | สื่อสารไร้สายระยะไกล |
-| 2 | GPS Module | U-blox NEO-6M/8M | ตำแหน่งพิกัด |
-| 1 | IMU (NGIMU) | Next Generation IMU | วัดทิศทาง/การเคลื่อนที่ |
-| 2 | SD Card Module | SPI Interface | บันทึกข้อมูล |
-| 2 | MicroSD Card | Class 10, 8GB+ | เก็บข้อมูล |
-| 2 | LoRa Antenna | Spring/SMA | เสาสัญญาณ LoRa |
-| - | Breadboard & Wires | Jumper Wires | ต่อวงจร |
-| - | Power Supply | Micro USB/5V | จ่ายไฟ |
+### Power Supply:
+```
+- Arduino/ESP32: 5V หรือ 3.3V
+- LoRa Module: 3.3V (สำคัญ! ห้ามใช้ 5V)
+- N-IMU: ตามที่ระบุในดาต้าชีต (มักเป็น 3.3V-5V)
+```
 
----
+## 2. การคำนวณ Latency
 
-##   CubeSat (Sender) Wiring
+### ส่วนประกอบของ Latency:
 
-| โมดูล | ขาโมดูล | ขา ESP32 | หมายเหตุ |
-|-------|---------|----------|----------|
-| **LoRa** | VCC | 3V3 | ห้ามต่อ 5V |
-| | GND | GND | |
-| | SCK | GPIO 18 | |
-| | MISO | GPIO 19 | |
-| | MOSI | GPIO 23 | |
-| | NSS/CS | GPIO 5 | |
-| | RST | GPIO 14 | |
-| | DIO0 | GPIO 2 | |
-| **SD Card** | VCC | 5V | มี Regulator |
-| | GND | GND | |
-| | SCK | GPIO 18 | แชร์กับ LoRa |
-| | MISO | GPIO 19 | |
-| | MOSI | GPIO 23 | |
-| | CS | GPIO 15 | |
-| **NGIMU** | VCC | 3V3/5V | ตรวจสอบคู่มือ |
-| | GND | GND | |
-| | TX | GPIO 16 | RX2 |
-| | RX | GPIO 17 | TX2 |
-| **GPS** | VCC | 3V3/5V | |
-| | GND | GND | |
-| | TX | GPIO 9 | RX1 |
-| | RX | GPIO 10 | TX1 |
+#### A. IMU Sampling & Processing:
+- **IMU Internal Processing**: 1-2ms
+- **Serial Communication**: 
+  ```
+  Data size: ~50 bytes per packet
+  Baud rate: 460,800 bps
+  Time = (50 × 8) / 460,800 = 0.87ms
+  ```
 
----
+#### B. Arduino Processing:
+- **Data Processing**: 0.1-0.5ms
+- **Memory Copy**: 0.05ms
+- **SPI Transfer (12 bytes)**:
+  ```
+  SPI Clock: 8MHz (SPI_CLOCK_DIV2)
+  Time = (12 × 8) / 8,000,000 = 0.012ms
+  ```
 
-##  Ground Station (Receiver) Wiring
+#### C. LoRa Transmission:
+- **LoRa Parameters** (typical):
+  ```
+  Spreading Factor: SF7
+  Bandwidth: 125kHz
+  Coding Rate: 4/5
+  Payload: 12 bytes
+  ```
+- **Air Time Calculation**:
+  ```
+  Preamble: 12.25 symbols
+  Header: 8 symbols
+  Payload: ceil((8×12-4×7+28+16)/(4×7))×4 = 8 symbols
+  Total symbols: 12.25 + 8 + 8 = 28.25 symbols
+  
+  Symbol time = 2^7 / 125000 = 1.024ms
+  Total air time = 28.25 × 1.024 = 28.9ms
+  ```
 
-(เหมือนกับ CubeSat ยกเว้นไม่มี NGIMU)
+#### D. LoRa Processing Overhead:
+- **TX Setup**: 1-2ms
+- **Buffer Processing**: 0.5ms
 
----
+### **Total Latency Calculation:**
 
-##   Assembly Notes
+```
+Component                    | Time (ms)
+---------------------------- | ---------
+IMU Sampling                 | 1.5
+Serial Communication         | 0.87
+Arduino Processing           | 0.6
+LoRa Air Time               | 28.9
+LoRa Overhead               | 2.0
+---------------------------- | ---------
+TOTAL LATENCY               | 33.87ms
+```
 
-- **SPI Bus**: LoRa & SD Card แชร์ SCK, MISO, MOSI แต่ใช้ CS แยก (LoRa: GPIO 5, SD: GPIO 15)
-- **UART**:  
-  - UART0 (GPIO 1, 3): อัปโหลดโค้ด/Serial Monitor  
-  - UART1 (GPIO 9, 10): GPS  
-  - UART2 (GPIO 16, 17): NGIMU
-- **Voltage**:  
-  - LoRa ใช้ 3.3V เท่านั้น  
-  - SD Card/GPS ใช้ 3.3V หรือ 5V (ขึ้นกับรุ่น)
-- **Antenna**:  
-  - ติดตั้งเสาอากาศ LoRa ก่อนใช้งาน  
-  - หลีกเลี่ยงการเปิด LoRa โดยไม่มีเสาอากาศ
-- **GPS**:  
-  - วางเสาอากาศในที่โล่งเพื่อรับสัญญาณ
+## 3. การปรับปรุง Latency
 
----
+### ลด Air Time:
+```cpp
+// ปรับพารามิเตอร์ LoRa สำหรับความเร็ว
+Spreading Factor: SF7 → SF6  (ลด ~50% air time)
+Bandwidth: 125kHz → 250kHz   (ลด ~50% air time)
+```
 
-## 🛠 ขั้นตอนการใช้งาน
+### เพิ่ม Data Rate:
+```
+SF6 + 250kHz bandwidth:
+Air time ≈ 7-10ms (ลดจาก 28.9ms)
+```
 
-1. **ต่อวงจร** ตามผังที่กำหนด
-2. **อัปโหลดโค้ด** สำหรับ Sender และ Receiver
-3. **ทดสอบ LoRa** สื่อสารระหว่าง CubeSat ↔ Ground Station
-4. **ตรวจสอบการบันทึกข้อมูล** GPS/IMU ลง SD Card
-5. **ดูข้อมูลเรียลไทม์** ผ่าน Serial Monitor
+### Optimized Latency:
+```
+Component                    | Optimized (ms)
+---------------------------- | --------------
+IMU Sampling                 | 1.0
+Serial Communication         | 0.43 (921,600 bps)
+Arduino Processing           | 0.3
+LoRa Air Time               | 8.0 (SF6+250kHz)
+LoRa Overhead               | 1.0
+---------------------------- | --------------
+OPTIMIZED TOTAL             | 10.73ms
+```
 
----
+## 4. Real-world Performance
 
-##  หมายเหตุ
+### ปัจจัยที่ส่งผลต่อ Latency:
+- **Distance**: ไม่ส่งผลต่อ latency (แต่ส่งผลต่อ reliability)
+- **Interference**: อาจต้อง retransmit
+- **Power Management**: sleep modes เพิ่ม latency
+- **Processing Load**: อื่นๆ ที่ทำงานใน loop()
 
-- อ่านคู่มืออุปกรณ์แต่ละชิ้นก่อนใช้งานจริง
-- ตรวจสอบแรงดันไฟให้เหมาะสมกับแต่ละโมดูล
-- หากมีปัญหาในการเชื่อมต่อ ให้ตรวจสอบสายไฟและขา GPIO
+### Expected Performance:
+```
+Best Case (SF6, 250kHz):     ~11ms
+Typical Case (SF7, 125kHz):  ~34ms
+Worst Case (SF12, 125kHz):   ~200ms+
+```
 
----
+## 5. การทดสอบ Latency
 
-**เอกสารนี้จัดทำเพื่อความสะดวกในการประกอบและใช้งานระบบ ESP32 LoRa Satellite Tracking System**  
-**โปรดปฏิบัติตามขั้นตอนอย่างเคร่งครัดเพื่อความปลอดภัยและประสิทธิภาพสูงสุด**
+### Code สำหรับวัด Latency:
+```cpp
+void ngimuEulerCallback(const NgimuEuler ngimuEulerData) {
+  unsigned long timestamp = micros();
+  
+  pitch = ngimuEulerData.pitch;
+  roll = ngimuEulerData.roll;
+  yaw = ngimuEulerData.yaw;
+  dataReady = true;
+  
+  Serial.print("IMU Data at: ");
+  Serial.println(timestamp);
+}
+
+void sendLoRaDataFast() {
+  unsigned long sendTime = micros();
+  // ... send data ...
+  Serial.print("LoRa sent at: ");
+  Serial.println(sendTime);
+}
+```
+
+### Performance Monitoring:
+- วัดระยะเวลาจาก IMU callback ถึง LoRa transmission complete
+- ใช้ oscilloscope วัด DIO0 pin เพื่อดูจุดเริ่มต้น/สิ้นสุด transmission
